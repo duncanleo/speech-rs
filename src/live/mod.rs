@@ -6,6 +6,8 @@ use core::ptr;
 use std::ffi::CString;
 use std::sync::Arc;
 
+use doom_fish_utils::panic_safe::catch_user_panic;
+
 use crate::error::SpeechError;
 use crate::ffi;
 
@@ -42,21 +44,31 @@ impl Drop for LiveRecognition {
     }
 }
 
+/// # Safety
+///
+/// `user_info` must be a valid, non-aliased `*const CallbackBox` pointer kept
+/// alive for the lifetime of the recognition session, or `null`.
+/// `transcript` must be a valid NUL-terminated C string or `null`.
 unsafe extern "C" fn trampoline(user_info: *mut c_void, transcript: *const c_char, is_final: bool) {
     if user_info.is_null() {
         return;
     }
+    // SAFETY: Caller guarantees user_info is a valid *const CallbackBox for the
+    // session lifetime; null check above ensures it is non-null.
     let cb = unsafe { &*user_info.cast::<CallbackBox>() };
     let s = if transcript.is_null() {
         String::new()
     } else {
+        // SAFETY: Caller guarantees transcript is a valid NUL-terminated C string.
         unsafe { core::ffi::CStr::from_ptr(transcript) }
             .to_string_lossy()
             .into_owned()
     };
-    (cb.callback)(LiveUpdate {
-        transcript: s,
-        is_final,
+    catch_user_panic("speech::live::trampoline", || {
+        (cb.callback)(LiveUpdate {
+            transcript: s,
+            is_final,
+        });
     });
 }
 

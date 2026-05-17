@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.1] - 2026-05-16
+
+### Fixed
+
+- **Panic safety**: `extern "C"` callbacks that invoke user closures
+  (`live::trampoline`, `task::task_event_trampoline`,
+  `task::availability_trampoline`) now wrap the user-closure call in
+  `doom_fish_utils::panic_safe::catch_user_panic`, preventing undefined
+  behaviour from Rust panics unwinding across the FFI boundary into Swift.
+- **SAFETY comments**: added `/// # Safety` doc sections to all three callback
+  functions, and `// SAFETY:` inline comments to the inner `unsafe {}` blocks
+  in `live::trampoline`.
+- **Cargo hygiene**: `doom-fish-utils` version constraint widened to
+  `>=0.1, <0.3` per workspace policy.
+
 ## [0.8.0] - 2026-05-16
 
 ### Added

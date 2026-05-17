@@ -9,6 +9,7 @@ use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::Arc;
 
+use doom_fish_utils::panic_safe::catch_user_panic;
 use serde::Deserialize;
 
 use crate::error::{SpeechError, SpeechFrameworkErrorCode};
@@ -380,6 +381,11 @@ impl RecognizerAvailabilityObserver {
     }
 }
 
+/// # Safety
+///
+/// `user_info` must be a valid, non-aliased `*const TaskCallbackBox` pointer
+/// kept alive for the lifetime of the recognition task, or `null`.
+/// `payload_json` must be a valid NUL-terminated C string or `null`.
 pub(crate) unsafe extern "C" fn task_event_trampoline(
     user_info: *mut c_void,
     payload_json: *const c_char,
@@ -420,15 +426,23 @@ pub(crate) unsafe extern "C" fn task_event_trampoline(
         _ => return,
     };
 
-    (callback.callback)(event);
+    catch_user_panic("speech::task::task_event_trampoline", || {
+        (callback.callback)(event);
+    });
 }
 
+/// # Safety
+///
+/// `user_info` must be a valid, non-aliased `*const AvailabilityCallbackBox`
+/// pointer kept alive for the lifetime of the availability observer, or `null`.
 pub(crate) unsafe extern "C" fn availability_trampoline(user_info: *mut c_void, available: bool) {
     if user_info.is_null() {
         return;
     }
     let callback = &*user_info.cast::<AvailabilityCallbackBox>();
-    (callback.callback)(available);
+    catch_user_panic("speech::task::availability_trampoline", || {
+        (callback.callback)(available);
+    });
 }
 
 pub(crate) fn make_task_callback<F>(callback: F) -> Arc<TaskCallbackBox>
