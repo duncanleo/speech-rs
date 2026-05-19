@@ -66,7 +66,9 @@ pub use error::{
     AuthorizationStatus, SpeechError, SpeechFrameworkError, SpeechFrameworkErrorCode,
     SPEECH_ERROR_DOMAIN,
 };
-pub use language_model::{LanguageModelConfiguration, SpeechLanguageModel};
+pub use language_model::{
+    LanguageModelConfiguration, SFSpeechLanguageModelConfiguration, SpeechLanguageModel,
+};
 pub use live::{LiveRecognition, LiveUpdate};
 pub use recognizer::{
     RecognitionMetadata, RecognitionResult, RecognitionWithMetadata, SpeechRecognizer,
@@ -119,7 +121,9 @@ pub mod prelude {
         AuthorizationStatus, SpeechError, SpeechFrameworkError, SpeechFrameworkErrorCode,
         SPEECH_ERROR_DOMAIN,
     };
-    pub use crate::language_model::{LanguageModelConfiguration, SpeechLanguageModel};
+    pub use crate::language_model::{
+        LanguageModelConfiguration, SFSpeechLanguageModelConfiguration, SpeechLanguageModel,
+    };
     pub use crate::live::{LiveRecognition, LiveUpdate};
     pub use crate::recognizer::{
         RecognitionMetadata, RecognitionResult, RecognitionWithMetadata, SpeechRecognizer,

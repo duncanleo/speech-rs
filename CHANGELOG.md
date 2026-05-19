@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.2] - 2026-05-19
+
+### Added
+
+- Added the Apple-style `SFSpeechLanguageModelConfiguration` alias for `LanguageModelConfiguration` so the Objective-C class name is available directly from Rust.
+
 ## [0.8.1] - 2026-05-16
 
 ### Fixed

@@ -19,6 +19,9 @@ pub struct LanguageModelConfiguration {
     weight: Option<f64>,
 }
 
+/// Apple-style alias for [`LanguageModelConfiguration`].
+pub type SFSpeechLanguageModelConfiguration = LanguageModelConfiguration;
+
 impl LanguageModelConfiguration {
     #[must_use]
     pub fn new(language_model: impl AsRef<Path>) -> Self {

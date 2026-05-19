@@ -29,7 +29,7 @@ COVERAGE_PCT: 100.0%
 | `SFSpeechRecognitionMetadata` | class | `SFSpeechRecognitionMetadata.h` | `DetailedRecognitionMetadata`, `RecognitionMetadata` |
 | `SFAcousticFeature` | class | `SFVoiceAnalytics.h` | `AcousticFeature` |
 | `SFVoiceAnalytics` | class | `SFVoiceAnalytics.h` | `VoiceAnalytics` |
-| `SFSpeechLanguageModel.Configuration` | class | `SFSpeechLanguageModel.h` | `LanguageModelConfiguration` |
+| `SFSpeechLanguageModel.Configuration` / `SFSpeechLanguageModelConfiguration` | class | `SFSpeechLanguageModel.h` | `LanguageModelConfiguration`, `SFSpeechLanguageModelConfiguration` |
 | `SFSpeechLanguageModel` | class | `SFSpeechLanguageModel.h` | `SpeechLanguageModel` |
 | `DictationTranscriber` | class | `Speech.swiftinterface` | `DictationTranscriber::{new,with_options,supported_locales,installed_locales,supported_locale_equivalent_to,selected_locales,available_compatible_audio_formats,transcribe_in_path}` |
 | `DictationTranscriber.Preset` | struct | `Speech.swiftinterface` | `DictationPreset` |

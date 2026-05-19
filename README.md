@@ -21,8 +21,7 @@ speech = { version = "0.8", features = ["async"] }
 use speech::async_api::{AsyncSpeechRecognizer, AsyncSpeechAnalyzer};
 use speech::analyzer::{SpeechAnalyzer, SpeechTranscriber, SpeechTranscriberPreset};
 
-# #[tokio::main]
-# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+# async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 // 1. Request authorization (non-blocking)
 let status = AsyncSpeechRecognizer::request_authorization().await?;
 println!("status: {status:?}");
