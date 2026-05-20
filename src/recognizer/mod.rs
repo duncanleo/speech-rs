@@ -447,12 +447,14 @@ impl SpeechRecognizer {
 
     /// Public(crate) accessor for the `async` feature — returns the recognizer
     /// JSON `CString` so `async_api` can pass it to the Swift thunk.
+    #[cfg(feature = "async")]
     pub(crate) fn recognizer_json_cstring(&self) -> Result<CString, SpeechError> {
         self.recognizer_json()
     }
 
     /// Public(crate) accessor for the `async` feature — returns an `Option<CString>`
     /// for the locale identifier, or `None` for the default locale.
+    #[cfg(feature = "async")]
     pub(crate) fn locale_cstring(&self) -> Option<CString> {
         self.locale_id.clone()
     }

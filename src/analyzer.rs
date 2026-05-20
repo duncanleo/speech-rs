@@ -1102,6 +1102,7 @@ impl SpeechAnalyzer {
 ///
 /// `modules` must be the same slice that was sent to the analyzer (used to
 /// populate the `module` field on each `SpeechAnalyzerModuleOutput`).
+#[cfg(feature = "async")]
 pub(crate) fn parse_analyzer_output_json(
     json: &str,
     modules: &[SpeechModuleDescriptor],
