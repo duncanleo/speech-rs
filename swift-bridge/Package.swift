@@ -15,7 +15,6 @@ let package = Package(
     targets: [
         .target(
             name: "SpeechBridge",
-            path: "Sources/SpeechBridge",
-            publicHeadersPath: "include")
+            path: "Sources/SpeechBridge")
     ]
 )

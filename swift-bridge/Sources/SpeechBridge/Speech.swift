@@ -360,6 +360,10 @@ private final class LiveSession {
     let request: SFSpeechAudioBufferRecognitionRequest
     let audioEngine: AVAudioEngine
     var task: SFSpeechRecognitionTask?
+    // Set by `sp_live_recognition_start`; released exactly once in `deinit` so
+    // the Rust callback context (an `Arc`) outlives any in-flight callback.
+    var userInfo: UnsafeMutableRawPointer?
+    var ctxRelease: SPContextRefCallback?
 
     init?(localeId: String) {
         let locale = Locale(identifier: localeId)
@@ -373,6 +377,10 @@ private final class LiveSession {
         self.request.requiresOnDeviceRecognition = true
         self.audioEngine = AVAudioEngine()
     }
+
+    deinit {
+        ctxRelease?(userInfo)
+    }
 }
 
 private var liveSessions: [UnsafeMutableRawPointer: LiveSession] = [:]
@@ -385,6 +393,7 @@ public func sp_live_recognition_start(
     _ localeId: UnsafePointer<CChar>?,
     _ callback: @escaping SPStreamCallback,
     _ userInfo: UnsafeMutableRawPointer?,
+    _ ctxRelease: @escaping SPContextRefCallback,
     _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
     let locale: String
@@ -394,9 +403,14 @@ public func sp_live_recognition_start(
         locale = Locale.current.identifier
     }
     guard let session = LiveSession(localeId: locale) else {
+        // Construction failed: reclaim the transferred Rust ownership now,
+        // since no `LiveSession` exists to release it in `deinit`.
+        ctxRelease(userInfo)
         outErrorMessage?.pointee = ffiString("recognizer unavailable for locale \(locale)")
         return nil
     }
+    session.userInfo = userInfo
+    session.ctxRelease = ctxRelease
 
     // Install a tap on the input node to feed audio buffers into the request.
     let inputNode = session.audioEngine.inputNode
@@ -409,6 +423,10 @@ public func sp_live_recognition_start(
     do {
         try session.audioEngine.start()
     } catch {
+        // The audio engine failed to start; release the Rust context before
+        // discarding the half-built session (its `deinit` would otherwise do it).
+        session.ctxRelease = nil
+        ctxRelease(userInfo)
         outErrorMessage?.pointee = ffiString("audio engine start failed: \(error.localizedDescription)")
         return nil
     }

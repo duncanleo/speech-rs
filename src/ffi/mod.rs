@@ -13,6 +13,36 @@ pub struct TranscriptionSegmentRaw {
     pub duration: f64,
 }
 
+// ----------------------------------------------------------------------------
+// ABI layout assertions for the `#[repr(C)]` structs shared with the Swift
+// bridge (`SPTranscriptionSegmentRaw` / `SPRecognitionMetadataRaw`).
+//
+// These structs are written by Swift (via `UnsafeMutablePointer`) and read by
+// Rust across the `@_cdecl` FFI boundary. If their size or alignment ever
+// drifts from what the Swift side expects, the marshalled bytes silently
+// corrupt. These compile-time assertions pin the exact ABI; the runtime
+// `sp_verify_ffi_layout` check in `tests/ffi_layout_tests.rs` guards that the
+// Swift `MemoryLayout` agrees too.
+//
+// NOTE: `offset_of!` is intentionally avoided here because it was only
+// stabilised in Rust 1.77, and this crate's MSRV is 1.76.
+use core::mem::{align_of, size_of};
+
+const _: () = assert!(size_of::<TranscriptionSegmentRaw>() == 32);
+const _: () = assert!(align_of::<TranscriptionSegmentRaw>() == 8);
+
+const _: () = assert!(size_of::<RecognitionMetadataRaw>() == 40);
+const _: () = assert!(align_of::<RecognitionMetadataRaw>() == 8);
+
+extern "C" {
+    /// Cross-language ABI check implemented in the Swift bridge.
+    ///
+    /// Returns `true` only if the Swift `MemoryLayout` (size, stride and
+    /// alignment) of the FFI structs matches the values pinned on the Rust
+    /// side. Verified by `tests/ffi_layout_tests.rs`.
+    pub fn sp_verify_ffi_layout() -> bool;
+}
+
 extern "C" {
     pub fn sp_string_free(s: *mut c_char);
 
@@ -47,6 +77,7 @@ extern "C" {
         locale_id: *const c_char,
         callback: LiveCallback,
         user_info: *mut c_void,
+        ctx_release: ContextRefCallback,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_live_recognition_stop(token: *mut c_void);
@@ -97,6 +128,8 @@ extern "C" {
         request_json: *const c_char,
         callback: TaskEventCallback,
         user_info: *mut c_void,
+        ctx_retain: ContextRefCallback,
+        ctx_release: ContextRefCallback,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_start_audio_buffer_task(
@@ -105,6 +138,8 @@ extern "C" {
         request_json: *const c_char,
         callback: TaskEventCallback,
         user_info: *mut c_void,
+        ctx_retain: ContextRefCallback,
+        ctx_release: ContextRefCallback,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_start_microphone_task(
@@ -113,6 +148,8 @@ extern "C" {
         request_json: *const c_char,
         callback: TaskEventCallback,
         user_info: *mut c_void,
+        ctx_retain: ContextRefCallback,
+        ctx_release: ContextRefCallback,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_task_finish(token: *mut c_void);
@@ -360,6 +397,14 @@ pub type LiveCallback =
 pub type TaskEventCallback =
     unsafe extern "C" fn(user_info: *mut c_void, payload_json: *const c_char);
 pub type AvailabilityCallback = unsafe extern "C" fn(user_info: *mut c_void, available: bool);
+
+/// C trampoline handed to the Swift bridge for refcounting the callback context.
+///
+/// Lets a bridge object take/drop a reference on the Rust callback context (an
+/// `Arc`) for the duration of its own lifetime. Used to keep the context alive
+/// while any callback can still be dispatched on it. Used for both "retain" and
+/// "release" trampolines.
+pub type ContextRefCallback = unsafe extern "C" fn(user_info: *mut c_void);
 
 pub mod status {
     pub const OK: i32 = 0;

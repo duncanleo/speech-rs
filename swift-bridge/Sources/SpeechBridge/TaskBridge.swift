@@ -6,19 +6,48 @@ import Speech
 public typealias SPTaskEventCallback =
   @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?) -> Void
 
+/// C trampoline (`ContextRefCallback` on the Rust side) used to retain/release
+/// the Rust callback context (an `Arc`) for the lifetime of a bridge object.
+public typealias SPContextRefCallback = @convention(c) (UnsafeMutableRawPointer?) -> Void
+
 private final class SPRustTaskDelegate: NSObject, SFSpeechRecognitionTaskDelegate {
   let callback: SPTaskEventCallback
   let userInfo: UnsafeMutableRawPointer?
-  var isActive = true
+  let ctxRelease: SPContextRefCallback
+  // Guarded by `activeLock` so a callback dispatched on Apple's recognition
+  // queue cannot race the `deactivate()` performed during teardown.
+  private let activeLock = NSLock()
+  private var active = true
 
-  init(callback: @escaping SPTaskEventCallback, userInfo: UnsafeMutableRawPointer?) {
+  init(
+    callback: @escaping SPTaskEventCallback,
+    userInfo: UnsafeMutableRawPointer?,
+    ctxRetain: SPContextRefCallback,
+    ctxRelease: @escaping SPContextRefCallback
+  ) {
     self.callback = callback
     self.userInfo = userInfo
+    self.ctxRelease = ctxRelease
     super.init()
+    // Take a +1 on the Rust callback context for the lifetime of this object so
+    // an in-flight delegate callback can never observe a freed context.
+    ctxRetain(userInfo)
+  }
+
+  deinit {
+    ctxRelease(userInfo)
+  }
+
+  private var isActive: Bool {
+    activeLock.lock()
+    defer { activeLock.unlock() }
+    return active
   }
 
   func deactivate() {
-    isActive = false
+    activeLock.lock()
+    active = false
+    activeLock.unlock()
   }
 
   private func send(_ payload: SPXTaskEventPayload) {
@@ -182,7 +211,9 @@ private func spxStartTask(
   recognizerJson: UnsafePointer<CChar>?,
   requestJson: UnsafePointer<CChar>?,
   callback: @escaping SPTaskEventCallback,
-  userInfo: UnsafeMutableRawPointer?
+  userInfo: UnsafeMutableRawPointer?,
+  ctxRetain: SPContextRefCallback,
+  ctxRelease: @escaping SPContextRefCallback
 ) throws -> UnsafeMutableRawPointer {
   try spxEnsureAuthorized()
   let recognizerPayload = try spxDecodeJSONIfPresent(recognizerJson, as: SPXRecognizerPayload.self)
@@ -195,7 +226,8 @@ private func spxStartTask(
   let request = try requestFactory()
   try spxApplyRequestPayload(requestPayload, recognizerPayload: recognizerPayload, to: request)
   let audioBufferRequest = try audioBufferRequestFactory()
-  let delegate = SPRustTaskDelegate(callback: callback, userInfo: userInfo)
+  let delegate = SPRustTaskDelegate(
+    callback: callback, userInfo: userInfo, ctxRetain: ctxRetain, ctxRelease: ctxRelease)
   let task = recognizer.recognitionTask(with: request, delegate: delegate)
   let taskBox = SPTaskBox(
     recognizer: recognizer,
@@ -217,6 +249,8 @@ public func sp_start_url_task(
   _ requestJson: UnsafePointer<CChar>?,
   _ callback: @escaping SPTaskEventCallback,
   _ userInfo: UnsafeMutableRawPointer?,
+  _ ctxRetain: @escaping SPContextRefCallback,
+  _ ctxRelease: @escaping SPContextRefCallback,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
   do {
@@ -231,7 +265,9 @@ public func sp_start_url_task(
       recognizerJson: recognizerJson,
       requestJson: requestJson,
       callback: callback,
-      userInfo: userInfo
+      userInfo: userInfo,
+      ctxRetain: ctxRetain,
+      ctxRelease: ctxRelease
     )
   } catch let error as SPXBridgeError {
     outErrorMessage?.pointee = spxCString(error.description)
@@ -249,6 +285,8 @@ public func sp_start_audio_buffer_task(
   _ requestJson: UnsafePointer<CChar>?,
   _ callback: @escaping SPTaskEventCallback,
   _ userInfo: UnsafeMutableRawPointer?,
+  _ ctxRetain: @escaping SPContextRefCallback,
+  _ ctxRelease: @escaping SPContextRefCallback,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
   do {
@@ -262,7 +300,8 @@ public func sp_start_audio_buffer_task(
     }
     let request = SFSpeechAudioBufferRecognitionRequest()
     try spxApplyRequestPayload(requestPayload, recognizerPayload: recognizerPayload, to: request)
-    let delegate = SPRustTaskDelegate(callback: callback, userInfo: userInfo)
+    let delegate = SPRustTaskDelegate(
+      callback: callback, userInfo: userInfo, ctxRetain: ctxRetain, ctxRelease: ctxRelease)
     let task = recognizer.recognitionTask(with: request, delegate: delegate)
     let taskBox = SPTaskBox(
       recognizer: recognizer,
@@ -290,6 +329,8 @@ public func sp_start_microphone_task(
   _ requestJson: UnsafePointer<CChar>?,
   _ callback: @escaping SPTaskEventCallback,
   _ userInfo: UnsafeMutableRawPointer?,
+  _ ctxRetain: @escaping SPContextRefCallback,
+  _ ctxRelease: @escaping SPContextRefCallback,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
   do {
@@ -305,7 +346,8 @@ public func sp_start_microphone_task(
 
     let request = SFSpeechAudioBufferRecognitionRequest()
     try spxApplyRequestPayload(requestPayload, recognizerPayload: recognizerPayload, to: request)
-    let delegate = SPRustTaskDelegate(callback: callback, userInfo: userInfo)
+    let delegate = SPRustTaskDelegate(
+      callback: callback, userInfo: userInfo, ctxRetain: ctxRetain, ctxRelease: ctxRelease)
     let task = recognizer.recognitionTask(with: request, delegate: delegate)
 
     let audioEngine = AVAudioEngine()

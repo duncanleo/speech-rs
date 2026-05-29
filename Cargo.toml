@@ -55,6 +55,9 @@ serde_json = "1"
 [dev-dependencies]
 pollster = "0.3"
 regex-lite = "0.1"
+# bitflags 2.12 raised its MSRV above this crate's; cap it so `cargo test`
+# dependency resolution stays buildable on the pinned toolchain.
+bitflags = ">=2.0, <2.12"
 
 [package.metadata.docs.rs]
 all-features = true

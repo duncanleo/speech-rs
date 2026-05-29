@@ -29,7 +29,6 @@ struct CallbackBox {
 /// RAII guard for a running live recognition session. Drop to stop.
 pub struct LiveRecognition {
     token: *mut c_void,
-    _callback: Arc<CallbackBox>,
 }
 
 unsafe impl Send for LiveRecognition {}
@@ -42,6 +41,26 @@ impl Drop for LiveRecognition {
             self.token = ptr::null_mut();
         }
     }
+}
+
+/// C trampoline handed to the Swift `LiveSession`, invoked from its `deinit` to
+/// drop the `Arc<CallbackBox>` reference that was transferred across FFI via
+/// `Arc::into_raw` in [`LiveRecognition::start`]. Because the Swift session owns
+/// this reference and only releases it in `deinit` (after the underlying
+/// recognition task has been cancelled), the callback context outlives any
+/// in-flight callback — closing the use-after-free window that existed when a
+/// bare `Arc::as_ptr` pointer was handed across FFI with no ownership transfer.
+///
+/// # Safety
+///
+/// `user_info` must be `null` or a pointer previously produced by
+/// `Arc::into_raw` for a `CallbackBox` that has not yet been released.
+unsafe extern "C" fn ctx_release(user_info: *mut c_void) {
+    if user_info.is_null() {
+        return;
+    }
+    // SAFETY: balances the `Arc::into_raw` in `LiveRecognition::start`.
+    drop(unsafe { Arc::from_raw(user_info.cast::<CallbackBox>()) });
 }
 
 /// # Safety
@@ -100,7 +119,10 @@ impl LiveRecognition {
         let cb_box = Arc::new(CallbackBox {
             callback: Box::new(callback),
         });
-        let cb_raw = Arc::as_ptr(&cb_box).cast::<c_void>().cast_mut();
+        // Transfer ownership of the `Arc` to the Swift bridge. It is reclaimed
+        // (and dropped) by `ctx_release`, invoked from the Swift session's
+        // `deinit`, or here in the error path if the start call fails.
+        let cb_raw = Arc::into_raw(cb_box).cast::<c_void>().cast_mut();
 
         let mut err_msg: *mut c_char = ptr::null_mut();
         let token = unsafe {
@@ -108,10 +130,13 @@ impl LiveRecognition {
                 locale_c.as_ref().map_or(ptr::null(), |c| c.as_ptr()),
                 trampoline,
                 cb_raw,
+                ctx_release,
                 &mut err_msg,
             )
         };
         if token.is_null() {
+            // Start failed: Swift never took ownership, so reclaim the `Arc`.
+            drop(unsafe { Arc::from_raw(cb_raw.cast::<CallbackBox>()) });
             let msg = if err_msg.is_null() {
                 "live recognition start failed".to_string()
             } else {
@@ -123,10 +148,7 @@ impl LiveRecognition {
             };
             return Err(SpeechError::RecognizerUnavailable(msg));
         }
-        Ok(Self {
-            token,
-            _callback: cb_box,
-        })
+        Ok(Self { token })
     }
 
     /// End the audio stream cleanly. Apple finalises any in-flight

@@ -22,8 +22,9 @@ use crate::request::{
     TaskHint, UrlRecognitionRequest,
 };
 use crate::task::{
-    availability_trampoline, make_availability_callback, make_task_callback, task_event_trampoline,
-    AudioBufferRecognitionTask, RecognitionTask, RecognizerAvailabilityObserver,
+    availability_trampoline, make_availability_callback, make_task_callback, task_ctx_release,
+    task_ctx_retain, task_event_trampoline, AudioBufferRecognitionTask, RecognitionTask,
+    RecognizerAvailabilityObserver,
 };
 use crate::transcription::{
     DetailedRecognitionMetadata, DetailedRecognitionResult, TranscriptionSegmentDetails,
@@ -357,6 +358,8 @@ impl SpeechRecognizer {
                 request_json.as_ptr(),
                 task_event_trampoline,
                 callback_raw,
+                task_ctx_retain,
+                task_ctx_release,
                 &mut err_msg,
             )
         };
@@ -388,6 +391,8 @@ impl SpeechRecognizer {
                 request_json.as_ptr(),
                 task_event_trampoline,
                 callback_raw,
+                task_ctx_retain,
+                task_ctx_release,
                 &mut err_msg,
             )
         };
@@ -419,6 +424,8 @@ impl SpeechRecognizer {
                 request_json.as_ptr(),
                 task_event_trampoline,
                 callback_raw,
+                task_ctx_retain,
+                task_ctx_release,
                 &mut err_msg,
             )
         };
