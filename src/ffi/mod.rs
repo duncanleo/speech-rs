@@ -108,6 +108,8 @@ extern "C" {
         recognizer_json: *const c_char,
         callback: AvailabilityCallback,
         user_info: *mut c_void,
+        ctx_retain: ContextRefCallback,
+        ctx_release: ContextRefCallback,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_recognizer_availability_observer_stop(token: *mut c_void);

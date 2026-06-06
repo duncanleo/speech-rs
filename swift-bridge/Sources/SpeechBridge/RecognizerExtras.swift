@@ -7,25 +7,50 @@ private final class SPAvailabilityObserver: NSObject, SFSpeechRecognizerDelegate
   let recognizer: SFSpeechRecognizer
   let callback: SPAvailabilityCallback
   let userInfo: UnsafeMutableRawPointer?
+  let ctxRelease: SPContextRefCallback
+  // Guarded by `activeLock` so a callback delivered by the recognizer cannot
+  // race the `deactivate()` performed during teardown.
+  private let activeLock = NSLock()
+  private var active = true
 
   init(
     recognizer: SFSpeechRecognizer, callback: @escaping SPAvailabilityCallback,
-    userInfo: UnsafeMutableRawPointer?
+    userInfo: UnsafeMutableRawPointer?,
+    ctxRetain: SPContextRefCallback,
+    ctxRelease: @escaping SPContextRefCallback
   ) {
     self.recognizer = recognizer
     self.callback = callback
     self.userInfo = userInfo
+    self.ctxRelease = ctxRelease
     super.init()
+    // Take a +1 on the Rust callback context for the lifetime of this object so
+    // an in-flight availability callback can never observe a freed context.
+    ctxRetain(userInfo)
     recognizer.delegate = self
+  }
+
+  deinit {
+    ctxRelease(userInfo)
+  }
+
+  private var isActive: Bool {
+    activeLock.lock()
+    defer { activeLock.unlock() }
+    return active
   }
 
   func speechRecognizer(
     _ speechRecognizer: SFSpeechRecognizer, availabilityDidChange available: Bool
   ) {
+    guard isActive else { return }
     callback(userInfo, available)
   }
 
   func stop() {
+    activeLock.lock()
+    active = false
+    activeLock.unlock()
     recognizer.delegate = nil
   }
 }
@@ -80,6 +105,8 @@ public func sp_recognizer_observe_availability(
   _ recognizerJson: UnsafePointer<CChar>?,
   _ callback: @escaping SPAvailabilityCallback,
   _ userInfo: UnsafeMutableRawPointer?,
+  _ ctxRetain: SPContextRefCallback,
+  _ ctxRelease: @escaping SPContextRefCallback,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
   do {
@@ -88,7 +115,8 @@ public func sp_recognizer_observe_availability(
     let recognizer = try spxCreateRecognizer(
       localeId: localeId, recognizerPayload: recognizerPayload)
     let observer = SPAvailabilityObserver(
-      recognizer: recognizer, callback: callback, userInfo: userInfo)
+      recognizer: recognizer, callback: callback, userInfo: userInfo,
+      ctxRetain: ctxRetain, ctxRelease: ctxRelease)
     return spxRetain(observer)
   } catch let error as SPXBridgeError {
     outErrorMessage?.pointee = spxCString(error.description)

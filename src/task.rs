@@ -479,6 +479,41 @@ pub(crate) unsafe extern "C" fn task_ctx_release(user_info: *mut c_void) {
     unsafe { Arc::decrement_strong_count(user_info.cast::<TaskCallbackBox>()) };
 }
 
+/// C trampoline handed to the Swift `SPAvailabilityObserver` so it can take a
+/// +1 reference on the Rust [`AvailabilityCallbackBox`] (an `Arc`) for the
+/// duration of its own lifetime. This keeps the callback context alive while an
+/// availability-change callback can still be dispatched on it, closing the
+/// use-after-free window that existed when only a bare `Arc::as_ptr` pointer was
+/// handed across FFI with no ownership transfer.
+///
+/// # Safety
+///
+/// `user_info` must be `null` or a pointer previously obtained from
+/// `Arc::as_ptr`/`Arc::into_raw` for a live `AvailabilityCallbackBox` whose
+/// strong count is at least 1 for the duration of this call.
+pub(crate) unsafe extern "C" fn availability_ctx_retain(user_info: *mut c_void) {
+    if user_info.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees `user_info` refers to a live `AvailabilityCallbackBox`.
+    unsafe { Arc::increment_strong_count(user_info.cast::<AvailabilityCallbackBox>()) };
+}
+
+/// C trampoline handed to the Swift `SPAvailabilityObserver`, invoked from its
+/// `deinit` to drop the +1 reference taken in [`availability_ctx_retain`].
+///
+/// # Safety
+///
+/// `user_info` must be `null` or a pointer matching a previous
+/// [`availability_ctx_retain`] call that has not yet been released.
+pub(crate) unsafe extern "C" fn availability_ctx_release(user_info: *mut c_void) {
+    if user_info.is_null() {
+        return;
+    }
+    // SAFETY: balances the `increment_strong_count` in `availability_ctx_retain`.
+    unsafe { Arc::decrement_strong_count(user_info.cast::<AvailabilityCallbackBox>()) };
+}
+
 pub(crate) fn make_task_callback<F>(callback: F) -> Arc<TaskCallbackBox>
 where
     F: Fn(RecognitionTaskEvent) + Send + Sync + 'static,
