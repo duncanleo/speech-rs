@@ -402,8 +402,6 @@ func spxRunSpeechAnalyzer(
     throw SPXBridgeError.audioLoadFailed("audio file does not exist: \(audioPath)")
   }
 
-  try spxEnsureAuthorized()
-
   let modules = try payload.modules.map(spxMakeSpeechModule)
   let analyzer = SpeechAnalyzer(modules: modules, options: try spxMakeAnalyzerOptions(from: payload.options))
   try await analyzer.setContext(spxMakeAnalysisContext(from: payload.context))
